@@ -1,0 +1,130 @@
+#!/bin/sh
+DIR=`pwd`
+count=0
+FILE_ERE=0
+LF=0
+export LC_ALL=POSIX
+
+# spocitame pocet zadanych argumentu
+for arg in "$@"; do
+	count=$((count+1))
+done
+
+# pokud bude pocet argumentu vetsi nez 3, vypise chybu
+if [ "$count" -gt "3" ]; then
+	echo Chyba: pocet argumentu je vetsi nez 3
+	exit 1
+fi
+
+# pokud prvni argument odpovida -i
+if [ "$1" = "-i" ]; then
+	# pokud nebyl zadan regularni vyraz, ktery ma byt ignorovan
+	# v opacnem pripade ho ulozi do promenne
+	if [ "$count" = "1" ]; then
+		echo Chyba: je vyzadovan regularni vyraz, ktery ma byt ignorovan
+		exit 1
+	else
+		FILE_ERE="$2"
+	fi
+	# pokud je druhy a treti argument stejny
+	if [ "$2" = "$3" ]; then
+		echo Chyba: regularni vyraz pokryva nazev korenoveho adresare
+		exit 1
+	fi
+	# pokud je pocet argumentu 3, ulozi do promenne treti argument
+	# v opacnem pripade do promenne ulozi root aktualniho adresare
+	if [ "$count" -eq "3" ]; then
+		DIR="$3"
+	else
+		DIR=`pwd`
+	fi
+fi
+
+# pokud je zadan pouze jeden argument, jedna se o adresar, ktery cheme prohledat
+# pokud zadany adresar neexistuje, vypise chybu
+# v oapcnem pripade adresar ulozi do promenne
+if [ "$count" -eq "1" ]; then
+	if [ ! -d $1 ]; then
+	echo Chyba: Zadany adresar neexistuje
+	exit 1
+	else
+		DIR="$1"
+	fi
+fi
+
+if [ ! -d $DIR ]; then
+	echo Chyba: Zadany adresar nebyl nalezen
+	exit 1 
+fi
+
+# zjistime pocet vsech adresaru (ktrome ignorovanych) 
+ND=`find $DIR -type d -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | wc -l`
+
+# nejvetsi adresarova hloubka
+lomitka=`echo $DIR | sed 's/[^/]//g' | awk '{ print length }'`
+DD=`find $DIR -type d -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" -exec bash -c 'echo $(tr -cd / <<< "$1"|wc -c)' -- {} \;  2>/dev/null | sort -n | tail -n 1`
+DD=$(($DD+1-$lomitka))
+# Average number of files
+# nejdrive musime zjistit, kolik je celkove souboru
+# potom vypocitame prumerny pocet souboru ve slozce
+NF=`find $DIR -type f -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | wc -l`
+AF=$(($NF/$ND))
+
+# largest file
+LF=`find $DIR -type f -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" -ls 2>/dev/null | awk '{print $7}' | sort -nr | head -n 1`
+if [ $LF -eq 0 ]; then
+	LF=N/A
+fi
+# Average file size
+# nejdrive zjistime velikost vsech souboru
+# potom vypocitame prumernou velikost jednho souboru
+if [ $NF -gt 0 ]; then
+  allFilesSize=`find $DIR -type f -ls -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | awk '{print $7}' | awk '{s+=$0} END {print s}'`
+  AS=$((allFilesSize/NF))
+else
+	AS=N/A
+fi
+
+# median
+if [ $NF -gt 0 ]; then
+	MS=`find $DIR -type f -ls -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | awk '{print $7}' | sort -n | awk ' { a[i++]=$1; }
+    END { x=int((i+1)/2); if (x < (i+1)/2) print int((a[x-1]+a[x])/2); else print int(a[x-1]); }'`
+else
+	MS=N/A
+fi
+# nalezeni vsech pripon
+EL=`find $DIR -type f -name '*.*' -not -path '*/\.*' -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | sed 's|.*\.||' | sort -u | tr -s ' ' | tr '\n' ',' | rev | cut -c 2- | rev`
+# vypis casti vysledku
+echo Root directory: $DIR
+echo Directories: $ND
+echo Max depth: $DD
+echo Average no. of files: $AF
+echo All files: $NF 
+echo "  Largest file: $LF"
+echo "  Average file size: $AS"
+echo "  File size median: $MS" 
+echo File extensions: $EL
+
+# nejdrive zjistime celkovy pocet vsech pripon
+pocetPripon=`find $DIR -type f -name '*.*' -not -path '*/\.*' -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | sed 's|.*\.||' | sort -u | wc -l`
+# pokud je pocet pripon vetsi nez 0
+if [ $pocetPripon -gt 0 ]; then
+	COUNTER=1
+	# projdeme kazdou priponu a zjistime potrebne informace
+	while [ "$COUNTER" -le "$pocetPripon" ]; do
+		EXT=`find $DIR -type f -name '*.*' -not -path '*/\.*' -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | sed 's|.*\.||' | sort -u | sed -n "${COUNTER}p"`
+	    NEXT=`find $DIR -type f -name "*.$EXT" -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | wc -l`
+	    LEXT=`find $DIR -name "*.$EXT" -ls -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | awk '{print $7}' | sort -nr | head -1`
+	    pocet=`find $DIR -name "*.$EXT" -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | wc -l`
+	    allFilesSizeE=`find $DIR -name "*.$EXT" -ls -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | awk '{print $7}' | awk '{s+=$0} END {print s}'`
+	    AEXT=$((allFilesSizeE/pocet))
+	    MEXT=`find $DIR -name "*.$EXT" -ls -not -path "*/$FILE_ERE/*" -not -path "*/$FILE_ERE" 2>/dev/null | awk '{print $7}' | sort -n | awk ' { a[i++]=$1; }
+	    END { x=int((i+1)/2); if (x < (i+1)/2) print int((a[x-1]+a[x])/2); else print int(a[x-1]); }'`
+	    # vytiskneme info o jednotlivych priponach
+		echo Files .$EXT: $NEXT
+		echo "  Largest file .$EXT: $LEXT" 
+		echo "  Average file size .$EXT: $AEXT"
+		echo "  File size median .$EXT: $MEXT"
+		COUNTER=$((COUNTER+1))
+	done
+fi
